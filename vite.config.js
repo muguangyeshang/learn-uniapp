@@ -11,7 +11,7 @@ export default defineConfig({
       // 跨站防护拒绝。开发期用 Vite 代理；微信小程序端不受
       // CORS 限制（但要求 https 或在开发者工具里关闭域名校验）。
       '/api': {
-        target: 'http://127.0.0.1:8799',
+        target: 'http://127.0.0.1:8090',
         changeOrigin: true,
       },
     },

@@ -5,7 +5,7 @@
     <view class="header">
       <text class="title">Fleet 服务状态</text>
       <text class="sub" v-if="loaded && !error">
-        共 {{ overview.total }} 个 · 正常 {{ overview.healthy }} · 下拉刷新
+        共 {{ services.length }} 个服务 · 来自 {{ reporter }} · 下拉刷新
       </text>
     </view>
 
@@ -15,14 +15,14 @@
 
     <view v-else-if="error" class="state bad">
       <text>{{ error }}</text>
-      <button size="mini" @click="load">重试</button>
+      <button size="mini" @click="login">重新登录</button>
     </view>
 
     <view v-else>
       <!-- v-for 和 Vue 网页版语法完全一致：UniApp = Vue 语法平移 -->
-      <view class="card" :class="tone(s)" v-for="s in services" :key="s.key">
+      <view class="card" :class="tone(s)" v-for="s in services" :key="s.id">
         <text class="name">{{ s.name }} :{{ s.port }}</text>
-        <text class="info">{{ levelText(s.level_number) }} · 心跳 {{ s.heartbeat || '-' }}</text>
+        <text class="info">{{ levelText(s.level) }} · 来自 {{ s.note }}</text>
       </view>
     </view>
   </view>
@@ -31,55 +31,87 @@
 <script>
 // 概念页：UniApp 不用 fetch，用自家请求 API——同一份代码在
 // H5 走 XHR、在微信小程序走 wx.request，这就是「跨端」的含义。
-// H5 端走同源 '/api'（由 Vite 代理转发），小程序端不受 CORS
-// 限制但要写完整地址——用条件编译一码两用：
+// 条件编译一码两用：H5 同源走 Vite 代理，小程序直连云端 Spring。
 // #ifdef H5
 const API_BASE = '' // 同源，交给 Vite 代理
 // #endif
 // #ifndef H5
-const API_BASE = 'http://127.0.0.1:8799' // 小程序/App 直连面板
+const API_BASE = 'http://localhost:8090' // 小程序/App 直连云端 Spring
 // #endif
 
+// 全家桶版：数据源换成 Spring /api/report 汇聚的多机数据。
+// 登录逻辑抽成 login()：拿 JWT 存本地，之后每个请求带 Bearer。
 export default {
   data() {
     return {
       loaded: false,
       error: '',
       services: [],
-      overview: { total: 0, healthy: 0 },
+      reporter: '',
+      token: uni.getStorageSync('token') || '',
     }
   },
-  // onLoad 是 uniapp 的页面生命周期（对应网页版 onMounted）
   onLoad() {
-    this.load()
+    if (this.token) {
+      this.load()
+    } else {
+      this.login()
+    }
   },
-  // 下拉刷新：用户下拉时触发，load 完成后收起刷新动画
   onPullDownRefresh() {
     this.load().finally(() => uni.stopPullDownRefresh())
   },
   methods: {
+    // 登录：教学版固定 admin/admin123，真实项目换成账号密码页
+    login() {
+      uni.request({
+        url: API_BASE + '/api/login',
+        method: 'POST',
+        data: { username: 'admin', password: 'admin123' },
+        timeout: 8000,
+        success: (res) => {
+          if (res.statusCode === 200 && res.data.token) {
+            this.token = res.data.token
+            uni.setStorageSync('token', this.token)
+            this.load()
+          } else {
+            this.error = '登录失败：HTTP ' + res.statusCode
+            this.loaded = true
+          }
+        },
+        fail: (err) => {
+          this.error = '登录连不上云端：' + (err.errMsg || '')
+          this.loaded = true
+        },
+      })
+    },
     async load() {
       try {
-        // uni.request：跨端请求原语，同一份代码 H5 走 XHR、小程序走 wx.request。
-        // 注意：uni.request 在不同版本/端上有的返回 Promise、有的只走回调，
-        // 包一层 Promise 才能安全地 await——「(intermediate value) is not
-        // iterable」就是 await 了一个非 Promise 的数组解构导致的。
+        // uni.request 返回类型跨端不一致，包一层 Promise 才能安全 await
         const result = await new Promise((resolve) => {
           uni.request({
-            url: API_BASE + '/api/state',
+            url: API_BASE + '/api/services',
             timeout: 8000,
+            header: { Authorization: 'Bearer ' + this.token },
             success: (res) => resolve([null, res]),
             fail: (err) => resolve([err, null]),
           })
         })
         const [err, res] = result
         if (err) throw err
+        if (res.statusCode === 401) {
+          // token 过期：重新登录一轮
+          this.loaded = false
+          this.login()
+          return
+        }
         if (res.statusCode !== 200) throw new Error('HTTP ' + res.statusCode)
-        this.services = res.data.services || []
-        this.overview = res.data.overview || { total: this.services.length, healthy: 0 }
+        const rows = res.data || []
+        this.services = rows
+        this.reporter = rows.length ? [...new Set(rows.map((r) => r.note))].join(' / ') : '云端'
         this.error = ''
       } catch (e) {
-        this.error = '读取失败（面板没在跑？）' + (e.errMsg || e.message || '')
+        this.error = '读取失败：' + (e.errMsg || e.message || '')
       } finally {
         this.loaded = true
       }
@@ -91,8 +123,8 @@ export default {
       return '未通过 L0'
     },
     tone(s) {
-      if ((s.level_number || 0) >= 4) return 'ok'
-      if ((s.level_number || 0) >= 3) return 'warn'
+      if ((s.level || 0) >= 4) return 'ok'
+      if ((s.level || 0) >= 3) return 'warn'
       return 'bad'
     },
   },
