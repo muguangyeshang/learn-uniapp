@@ -6,6 +6,20 @@
 				"navigationBarTitleText": "Fleet 服务状态",
 				"enablePullDownRefresh": true
 			}
+		},
+		{
+			"path": "pages/book/book",
+			"style": {
+				"navigationBarTitleText": "服务预约",
+				"enablePullDownRefresh": false
+			}
+		},
+		{
+			"path": "pages/orders/orders",
+			"style": {
+				"navigationBarTitleText": "后台 · 预约订单",
+				"enablePullDownRefresh": true
+			}
 		}
 	],
 	"globalStyle": {
