@@ -2,13 +2,9 @@
 // index（服务看板）/ book（预约表单）/ orders（后台数据页）共用这一份，
 // 避免三处各写一套登录逻辑导致 token 状态不一致。
 //
-// 条件编译一码两用：H5 同源走 Vite 代理，小程序/App 直连云端 Spring。
-// #ifdef H5
-const API_BASE = ''
-// #endif
-// #ifndef H5
-const API_BASE = 'http://localhost:8090'
-// #endif
+// 地址统一由 src/config.js 提供（可用 .env 的 VITE_API_BASE 覆盖），
+// 避免每加一个页面就复制一份写死的 localhost。
+import { API_BASE } from '../config.js'
 
 // 教学版固定账号；接真实系统时换成登录页，把凭据交给用户填写。
 // 后端对应 application.properties 的 fleet.admin-user / fleet.admin-password。
